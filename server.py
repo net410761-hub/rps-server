@@ -8,6 +8,7 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
+# Переменные окружения
 DATABASE_URL = os.environ.get('DATABASE_URL')
 API_SECRET = os.environ.get('API_SECRET')
 
@@ -23,8 +24,11 @@ def check_auth():
     api_key = request.headers.get('X-API-Key')
     return api_key == API_SECRET
 
+# ========== ПУБЛИЧНЫЕ ЭНДПОИНТЫ (без ключа) ==========
+
 @app.route('/api/leaderboard', methods=['GET'])
 def get_leaderboard():
+    """Топ-50 рекордов — доступно всем без ключа"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -36,28 +40,9 @@ def get_leaderboard():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/record-win', methods=['POST'])
-def record_win():
-    if not check_auth():
-        return jsonify({'error': 'Unauthorized'}), 401
-    data = request.json
-    player_name = data.get('player_name', '')
-    if not validate_name(player_name):
-        return jsonify({'error': 'Invalid name'}), 400
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('INSERT INTO wins (player_name) VALUES (%s)', (player_name,))
-        cur.execute('UPDATE evolution_state SET total_wins = total_wins + 1')
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'status': 'ok'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/api/evolution', methods=['GET'])
 def get_evolution():
+    """Статус эволюции — доступно всем без ключа"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -75,10 +60,36 @@ def get_evolution():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'alive'})
+
+# ========== ЗАЩИЩЁННЫЕ ЭНДПОИНТЫ (требуют ключ) ==========
+
+@app.route('/api/record-win', methods=['POST'])
+def record_win():
+    if not check_auth():
+        return jsonify({'error': 'unauthorized'}), 401
+    data = request.json
+    player_name = data.get('player_name', '')
+    if not validate_name(player_name):
+        return jsonify({'error': 'Invalid name'}), 400
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('INSERT INTO wins (player_name) VALUES (%s)', (player_name,))
+        cur.execute('UPDATE evolution_state SET total_wins = total_wins + 1')
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/record-record', methods=['POST'])
 def record_record():
     if not check_auth():
-        return jsonify({'error': 'Unauthorized'}), 401
+        return jsonify({'error': 'unauthorized'}), 401
     data = request.json
     name = data.get('name', '')
     streak = data.get('streak', 0)
@@ -99,10 +110,6 @@ def record_record():
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'alive'})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
